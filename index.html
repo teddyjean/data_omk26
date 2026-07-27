@@ -16,8 +16,21 @@
 
   <div class="p-4 max-w-md mx-auto space-y-4">
     
-    <!-- Filter Wilayah & Lingkungan -->
+    <!-- Filter & Search -->
     <div class="bg-white p-4 rounded-xl shadow space-y-3">
+      <!-- Input Cari Nama -->
+      <div>
+        <label class="block text-xs font-semibold text-gray-600 mb-1">CARI NAMA OMK</label>
+        <input type="text" id="inputSearch" oninput="onSearchInput()" placeholder="Ketik nama OMK..." class="w-full p-2 border rounded-lg text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none">
+      </div>
+
+      <div class="relative flex py-1 items-center">
+        <div class="flex-grow border-t border-gray-200"></div>
+        <span class="flex-shrink mx-2 text-[10px] text-gray-400 font-bold uppercase">Atau Filter Per Lingkungan</span>
+        <div class="flex-grow border-t border-gray-200"></div>
+      </div>
+
+      <!-- Dropdown Wilayah -->
       <div>
         <label class="block text-xs font-semibold text-gray-600 mb-1">WILAYAH</label>
         <select id="selectWilayah" onchange="onWilayahChange()" class="w-full p-2 border rounded-lg text-sm bg-gray-50">
@@ -25,6 +38,7 @@
         </select>
       </div>
 
+      <!-- Dropdown Lingkungan -->
       <div>
         <label class="block text-xs font-semibold text-gray-600 mb-1">LINGKUNGAN</label>
         <select id="selectLingkungan" onchange="renderList()" class="w-full p-2 border rounded-lg text-sm bg-gray-50" disabled>
@@ -42,128 +56,174 @@
   </div>
 
   <script>
-    // MASUKKAN URL WEB APP APPS SCRIPT KAMU DI SINI
-     const API_URL = "https://script.google.com/macros/s/AKfycbymbV0SuZC6bFTuo5rgbb3TeKQDTmWXTOedp-nvht_uytLmlQfZxuABIDpJpcLS6Xl3/exec";
+  // URL Web App Apps Script kamu
+  const API_URL = "https://script.google.com/macros/s/AKfycbymbV0SuZC6bFTuo5rgbb3TeKQDTmWXTOedp-nvht_uytLmlQfZxuABIDpJpcLS6Xl3/exec";
 
-    let rawData = [];
+  let rawData = [];
 
-    async function loadData() {
-      try {
-        const res = await fetch(API_URL);
-        rawData = await res.json();
-        document.getElementById('loading').classList.add('hidden');
-        populateWilayah();
-      } catch (err) {
-        document.getElementById('loading').innerText = "Gagal memuat data. Coba refresh halaman.";
-      }
+  // 1. Fetch data dari Google Sheets via Apps Script API
+  async function loadData() {
+    try {
+      const res = await fetch(API_URL);
+      rawData = await res.json();
+      document.getElementById('loading').classList.add('hidden');
+      populateWilayah();
+    } catch (err) {
+      document.getElementById('loading').innerText = "Gagal memuat data. Coba refresh halaman.";
+    }
+  }
+
+  // 2. Isi dropdown Wilayah
+  function populateWilayah() {
+    const wilayahs = [...new Set(rawData.map(item => item.wilayah))].filter(Boolean).sort();
+    const select = document.getElementById('selectWilayah');
+    select.innerHTML = '<option value="">-- Pilih Wilayah --</option>';
+    wilayahs.forEach(w => {
+      select.innerHTML += `<option value="${w}">${w}</option>`;
+    });
+  }
+
+  // 3. Trigger saat Wilayah dipilih -> Isi dropdown Lingkungan
+  function onWilayahChange() {
+    const selectedW = document.getElementById('selectWilayah').value;
+    const lingSelect = document.getElementById('selectLingkungan');
+    lingSelect.innerHTML = '<option value="">-- Pilih Lingkungan --</option>';
+    
+    // Clear search bar kalau user ganti ke filter dropdown
+    document.getElementById('inputSearch').value = '';
+
+    if (!selectedW) {
+      lingSelect.disabled = true;
+      document.getElementById('omkContainer').innerHTML = '';
+      return;
     }
 
-    function populateWilayah() {
-      const wilayahs = [...new Set(rawData.map(item => item.wilayah))].sort();
-      const select = document.getElementById('selectWilayah');
-      wilayahs.forEach(w => {
-        if(w) select.innerHTML += `<option value="${w}">${w}</option>`;
-      });
-    }
+    const lingKungans = [...new Set(rawData.filter(i => i.wilayah === selectedW).map(i => i.lingkungan))].filter(Boolean).sort();
+    lingKungans.forEach(l => {
+      lingSelect.innerHTML += `<option value="${l}">${l}</option>`;
+    });
+    lingSelect.disabled = false;
+    document.getElementById('omkContainer').innerHTML = '';
+  }
 
-    function onWilayahChange() {
-      const selectedW = document.getElementById('selectWilayah').value;
+  // 4. Trigger saat user mengetik di kolom Pencarian Nama
+  function onSearchInput() {
+    const keyword = document.getElementById('inputSearch').value.trim();
+    
+    // Jika kolom pencarian diisi, reset dropdown filter
+    if (keyword.length > 0) {
+      document.getElementById('selectWilayah').value = "";
       const lingSelect = document.getElementById('selectLingkungan');
       lingSelect.innerHTML = '<option value="">-- Pilih Lingkungan --</option>';
-      
-      if (!selectedW) {
-        lingSelect.disabled = true;
-        document.getElementById('omkContainer').innerHTML = '';
-        return;
-      }
+      lingSelect.disabled = true;
+    }
+    
+    renderList();
+  }
 
-      const lingKungans = [...new Set(rawData.filter(i => i.wilayah === selectedW).map(i => i.lingkungan))].sort();
-      lingKungans.forEach(l => {
-        if(l) lingSelect.innerHTML += `<option value="${l}">${l}</option>`;
-      });
-      lingSelect.disabled = false;
-      document.getElementById('omkContainer').innerHTML = '';
+  // 5. Render list kartu nama OMK
+  function renderList() {
+    const keyword = document.getElementById('inputSearch').value.trim().toLowerCase();
+    const selectedW = document.getElementById('selectWilayah').value;
+    const selectedL = document.getElementById('selectLingkungan').value;
+    const container = document.getElementById('omkContainer');
+    container.innerHTML = '';
+
+    let filtered = [];
+
+    // Logika Filter: Cari Nama VS Filter Dropdown
+    if (keyword.length >= 2) {
+      filtered = rawData.filter(i => 
+        (i.nama && i.nama.toLowerCase().includes(keyword)) || 
+        (i.namaBaptis && i.namaBaptis.toLowerCase().includes(keyword))
+      );
+    } else if (selectedL) {
+      filtered = rawData.filter(i => i.wilayah === selectedW && i.lingkungan === selectedL);
+    } else {
+      return; // Tidak render apa-apa jika belum pilih/ketik
     }
 
-    function renderList() {
-      const selectedW = document.getElementById('selectWilayah').value;
-      const selectedL = document.getElementById('selectLingkungan').value;
-      const container = document.getElementById('omkContainer');
-      container.innerHTML = '';
-
-      if (!selectedL) return;
-
-      const filtered = rawData.filter(i => i.wilayah === selectedW && i.lingkungan === selectedL);
-
-      if (filtered.length === 0) {
-        container.innerHTML = '<p class="text-center text-gray-500">Tidak ada data.</p>';
-        return;
-      }
-
-      filtered.forEach(item => {
-        const card = document.createElement('div');
-        card.className = "bg-white p-4 rounded-xl shadow space-y-2 border-l-4 border-blue-600";
-        card.innerHTML = `
-          <div>
-            <h3 class="font-bold text-gray-800 text-sm">${item.nama}</h3>
-            <p class="text-xs text-gray-500">Baptis: ${item.namaBaptis || '-'} | Umur: ${item.umur} thn</p>
-            <p class="text-xs text-gray-400 mt-0.5">${item.alamat}</p>
-          </div>
-          
-          <div class="space-y-1.5 pt-2 border-t">
-            <label class="block text-[10px] font-bold text-gray-500 uppercase">Status Keberadaan</label>
-            <select id="status-${item.rowIndex}" class="w-full p-2 border rounded text-xs bg-gray-50">
-              <option value="" ${item.status===''?'selected':''}>-- Belum Dikonfirmasi --</option>
-              <option value="Aktif OMK" ${item.status==='Aktif OMK'?'selected':''}>🟢 Aktif OMK</option>
-              <option value="Ada (Pasif)" ${item.status==='Ada (Pasif)'?'selected':''}>🟡 Ada di rumah (Pasif)</option>
-              <option value="Merantau/Kuliah" ${item.status==='Merantau/Kuliah'?'selected':''}>🔵 Merantau / Kuliah / Kerja</option>
-              <option value="Pindah Domisili" ${item.status==='Pindah Domisili'?'selected':''}>🔴 Pindah Domisili</option>
-              <option value="Menikah/Lulus" ${item.status==='Menikah/Lulus'?'selected':''}>⚪ Sudah Menikah / Lulus OMK</option>
-            </select>
-
-            <input type="text" id="ket-${item.rowIndex}" value="${item.keterangan}" placeholder="Catatan opsional (misal: Kuliah di Jakarta)" class="w-full p-2 border rounded text-xs">
-
-            <button onclick="saveItem(${item.rowIndex}, this)" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs py-2 rounded-lg transition shadow-sm">
-              Simpan
-            </button>
-          </div>
-        `;
-        container.appendChild(card);
-      });
+    if (filtered.length === 0) {
+      container.innerHTML = '<p class="text-center text-gray-500 py-4 text-sm">Data tidak ditemukan.</p>';
+      return;
     }
 
-    async function saveItem(rowIndex, btn) {
-      const originalText = btn.innerText;
-      btn.innerText = "Menyimpan...";
-      btn.disabled = true;
+    // Render kartu OMK
+    filtered.forEach(item => {
+      const card = document.createElement('div');
+      card.className = "bg-white p-4 rounded-xl shadow space-y-2 border-l-4 border-blue-600";
+      card.innerHTML = `
+        <div>
+          <h3 class="font-bold text-gray-800 text-sm">${item.nama}</h3>
+          <p class="text-xs text-gray-500">Baptis: ${item.namaBaptis || '-'} | Umur: ${item.umur || '-'} thn</p>
+          <p class="text-xs text-blue-600 font-medium mt-0.5">${item.wilayah} - ${item.lingkungan}</p>
+          <p class="text-xs text-gray-400">${item.alamat || '-'}</p>
+        </div>
+        
+        <div class="space-y-1.5 pt-2 border-t">
+          <label class="block text-[10px] font-bold text-gray-500 uppercase">Status Keberadaan</label>
+          <select id="status-${item.rowIndex}" class="w-full p-2 border rounded text-xs bg-gray-50 focus:bg-white">
+            <option value="" ${item.status===''?'selected':''}>-- Belum Dikonfirmasi --</option>
+            <option value="Aktif OMK" ${item.status==='Aktif OMK'?'selected':''}>🟢 Aktif OMK</option>
+            <option value="Ada (Pasif)" ${item.status==='Ada (Pasif)'?'selected':''}>🟡 Ada di rumah (Pasif)</option>
+            <option value="Merantau/Kuliah" ${item.status==='Merantau/Kuliah'?'selected':''}>🔵 Merantau / Kuliah / Kerja</option>
+            <option value="Pindah Domisili" ${item.status==='Pindah Domisili'?'selected':''}>🔴 Pindah Domisili</option>
+            <option value="Menikah/Lulus" ${item.status==='Menikah/Lulus'?'selected':''}>⚪ Sudah Menikah / Lulus OMK</option>
+          </select>
 
-      const statusVal = document.getElementById(`status-${rowIndex}`).value;
-      const ketVal = document.getElementById(`ket-${rowIndex}`).value;
+          <input type="text" id="ket-${item.rowIndex}" value="${item.keterangan || ''}" placeholder="Catatan opsional (misal: Kuliah di Jakarta)" class="w-full p-2 border rounded text-xs">
 
-      try {
-        await fetch(API_URL, {
-          method: 'POST',
-          body: JSON.stringify({
-            rowIndex: rowIndex,
-            status: statusVal,
-            keterangan: ketVal
-          })
-        });
-        btn.innerText = "✓ Tersimpan";
-        btn.className = "w-full bg-green-600 text-white font-medium text-xs py-2 rounded-lg";
-        setTimeout(() => {
-          btn.innerText = originalText;
-          btn.className = "w-full bg-blue-600 text-white font-medium text-xs py-2 rounded-lg shadow-sm";
-          btn.disabled = false;
-        }, 2000);
-      } catch (err) {
-        alert("Gagal menyimpan data.");
+          <button onclick="saveItem(${item.rowIndex}, this)" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs py-2 rounded-lg transition shadow-sm">
+            Simpan
+          </button>
+        </div>
+      `;
+      container.appendChild(card);
+    });
+  }
+
+  // 6. Simpan status ke Apps Script (Google Sheets)
+  async function saveItem(rowIndex, btn) {
+    const originalText = btn.innerText;
+    btn.innerText = "Menyimpan...";
+    btn.disabled = true;
+
+    const statusVal = document.getElementById(`status-${rowIndex}`).value;
+    const ketVal = document.getElementById(`ket-${rowIndex}`).value;
+
+    try {
+      await fetch(API_URL, {
+        method: 'POST',
+        body: JSON.stringify({
+          rowIndex: rowIndex,
+          status: statusVal,
+          keterangan: ketVal
+        })
+      });
+
+      // Update data di local rawData biar gak perlu fetch ulang
+      const target = rawData.find(i => i.rowIndex === rowIndex);
+      if (target) {
+        target.status = statusVal;
+        target.keterangan = ketVal;
+      }
+
+      btn.innerText = "✓ Tersimpan";
+      btn.className = "w-full bg-green-600 text-white font-medium text-xs py-2 rounded-lg";
+      setTimeout(() => {
         btn.innerText = originalText;
+        btn.className = "w-full bg-blue-600 text-white font-medium text-xs py-2 rounded-lg shadow-sm";
         btn.disabled = false;
-      }
+      }, 2000);
+    } catch (err) {
+      alert("Gagal menyimpan data. Pastikan koneksi internet aman.");
+      btn.innerText = originalText;
+      btn.disabled = false;
     }
+  }
 
-    loadData();
-  </script>
+  // Load data awal
+  loadData();
+</script>
 </body>
 </html>
