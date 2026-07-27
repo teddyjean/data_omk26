@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Data OMK Kalasan 2026</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen pb-10">
+
+  <!-- Header -->
+  <div class="bg-blue-700 text-white p-4 sticky top-0 shadow-md z-10">
+    <h1 class="text-lg font-bold">Validasi Data OMK Kalasan</h1>
+    <p class="text-xs opacity-80">Pilih Wilayah & Lingkungan untuk verifikasi keberadaan</p>
+  </div>
+
+  <div class="p-4 max-w-md mx-auto space-y-4">
+    
+    <!-- Filter Wilayah & Lingkungan -->
+    <div class="bg-white p-4 rounded-xl shadow space-y-3">
+      <div>
+        <label class="block text-xs font-semibold text-gray-600 mb-1">WILAYAH</label>
+        <select id="selectWilayah" onchange="onWilayahChange()" class="w-full p-2 border rounded-lg text-sm bg-gray-50">
+          <option value="">-- Pilih Wilayah --</option>
+        </select>
+      </div>
+
+      <div>
+        <label class="block text-xs font-semibold text-gray-600 mb-1">LINGKUNGAN</label>
+        <select id="selectLingkungan" onchange="renderList()" class="w-full p-2 border rounded-lg text-sm bg-gray-50" disabled>
+          <option value="">-- Pilih Lingkungan --</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Status Info / Loading -->
+    <div id="loading" class="text-center py-6 text-gray-500 font-medium">Memuat data OMK...</div>
+
+    <!-- List Nama OMK (Cards) -->
+    <div id="omkContainer" class="space-y-3"></div>
+
+  </div>
+
+  <script>
+    // MASUKKAN URL WEB APP APPS SCRIPT KAMU DI SINI
+     const API_URL = "https://script.google.com/macros/s/AKfycbymbV0SuZC6bFTuo5rgbb3TeKQDTmWXTOedp-nvht_uytLmlQfZxuABIDpJpcLS6Xl3/exec";
+
+    let rawData = [];
+
+    async function loadData() {
+      try {
+        const res = await fetch(API_URL);
+        rawData = await res.json();
+        document.getElementById('loading').classList.add('hidden');
+        populateWilayah();
+      } catch (err) {
+        document.getElementById('loading').innerText = "Gagal memuat data. Coba refresh halaman.";
+      }
+    }
+
+    function populateWilayah() {
+      const wilayahs = [...new Set(rawData.map(item => item.wilayah))].sort();
+      const select = document.getElementById('selectWilayah');
+      wilayahs.forEach(w => {
+        if(w) select.innerHTML += `<option value="${w}">${w}</option>`;
+      });
+    }
+
+    function onWilayahChange() {
+      const selectedW = document.getElementById('selectWilayah').value;
+      const lingSelect = document.getElementById('selectLingkungan');
+      lingSelect.innerHTML = '<option value="">-- Pilih Lingkungan --</option>';
+      
+      if (!selectedW) {
+        lingSelect.disabled = true;
+        document.getElementById('omkContainer').innerHTML = '';
+        return;
+      }
+
+      const lingKungans = [...new Set(rawData.filter(i => i.wilayah === selectedW).map(i => i.lingkungan))].sort();
+      lingKungans.forEach(l => {
+        if(l) lingSelect.innerHTML += `<option value="${l}">${l}</option>`;
+      });
+      lingSelect.disabled = false;
+      document.getElementById('omkContainer').innerHTML = '';
+    }
+
+    function renderList() {
+      const selectedW = document.getElementById('selectWilayah').value;
+      const selectedL = document.getElementById('selectLingkungan').value;
+      const container = document.getElementById('omkContainer');
+      container.innerHTML = '';
+
+      if (!selectedL) return;
+
+      const filtered = rawData.filter(i => i.wilayah === selectedW && i.lingkungan === selectedL);
+
+      if (filtered.length === 0) {
+        container.innerHTML = '<p class="text-center text-gray-500">Tidak ada data.</p>';
+        return;
+      }
+
+      filtered.forEach(item => {
+        const card = document.createElement('div');
+        card.className = "bg-white p-4 rounded-xl shadow space-y-2 border-l-4 border-blue-600";
+        card.innerHTML = `
+          <div>
+            <h3 class="font-bold text-gray-800 text-sm">${item.nama}</h3>
+            <p class="text-xs text-gray-500">Baptis: ${item.namaBaptis || '-'} | Umur: ${item.umur} thn</p>
+            <p class="text-xs text-gray-400 mt-0.5">${item.alamat}</p>
+          </div>
+          
+          <div class="space-y-1.5 pt-2 border-t">
+            <label class="block text-[10px] font-bold text-gray-500 uppercase">Status Keberadaan</label>
+            <select id="status-${item.rowIndex}" class="w-full p-2 border rounded text-xs bg-gray-50">
+              <option value="" ${item.status===''?'selected':''}>-- Belum Dikonfirmasi --</option>
+              <option value="Aktif OMK" ${item.status==='Aktif OMK'?'selected':''}>🟢 Aktif OMK</option>
+              <option value="Ada (Pasif)" ${item.status==='Ada (Pasif)'?'selected':''}>🟡 Ada di rumah (Pasif)</option>
+              <option value="Merantau/Kuliah" ${item.status==='Merantau/Kuliah'?'selected':''}>🔵 Merantau / Kuliah / Kerja</option>
+              <option value="Pindah Domisili" ${item.status==='Pindah Domisili'?'selected':''}>🔴 Pindah Domisili</option>
+              <option value="Menikah/Lulus" ${item.status==='Menikah/Lulus'?'selected':''}>⚪ Sudah Menikah / Lulus OMK</option>
+            </select>
+
+            <input type="text" id="ket-${item.rowIndex}" value="${item.keterangan}" placeholder="Catatan opsional (misal: Kuliah di Jakarta)" class="w-full p-2 border rounded text-xs">
+
+            <button onclick="saveItem(${item.rowIndex}, this)" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs py-2 rounded-lg transition shadow-sm">
+              Simpan
+            </button>
+          </div>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    async function saveItem(rowIndex, btn) {
+      const originalText = btn.innerText;
+      btn.innerText = "Menyimpan...";
+      btn.disabled = true;
+
+      const statusVal = document.getElementById(`status-${rowIndex}`).value;
+      const ketVal = document.getElementById(`ket-${rowIndex}`).value;
+
+      try {
+        await fetch(API_URL, {
+          method: 'POST',
+          body: JSON.stringify({
+            rowIndex: rowIndex,
+            status: statusVal,
+            keterangan: ketVal
+          })
+        });
+        btn.innerText = "✓ Tersimpan";
+        btn.className = "w-full bg-green-600 text-white font-medium text-xs py-2 rounded-lg";
+        setTimeout(() => {
+          btn.innerText = originalText;
+          btn.className = "w-full bg-blue-600 text-white font-medium text-xs py-2 rounded-lg shadow-sm";
+          btn.disabled = false;
+        }, 2000);
+      } catch (err) {
+        alert("Gagal menyimpan data.");
+        btn.innerText = originalText;
+        btn.disabled = false;
+      }
+    }
+
+    loadData();
+  </script>
+</body>
+</html>
