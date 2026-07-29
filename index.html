@@ -192,7 +192,7 @@
     const ketVal = document.getElementById(`ket-${rowIndex}`).value;
 
     try {
-      await fetch(API_URL, {
+      const res = await fetch(API_URL, {
         method: 'POST',
         body: JSON.stringify({
           rowIndex: rowIndex,
@@ -200,6 +200,11 @@
           keterangan: ketVal
         })
       });
+
+      const result = await res.json();
+      if (!res.ok || result.status !== 'success') {
+        throw new Error(result.message || `Server merespons status ${res.status}`);
+      }
 
       // Update data di local rawData biar gak perlu fetch ulang
       const target = rawData.find(i => i.rowIndex === rowIndex);
@@ -216,7 +221,7 @@
         btn.disabled = false;
       }, 2000);
     } catch (err) {
-      alert("Gagal menyimpan data. Pastikan koneksi internet aman.");
+      alert("Gagal menyimpan data: " + err.message);
       btn.innerText = originalText;
       btn.disabled = false;
     }
